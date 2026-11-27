@@ -43,6 +43,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .row button{padding:6px 12px;font-size:.9rem}
 .empty{color:var(--muted)}
+.modebar{display:flex;gap:6px;margin:0 0 12px}
+.modebar button{flex:1 1 0;font-weight:600}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.modehint{margin:-4px 0 12px;font-size:.88rem;color:var(--muted)}
+.q.zhq{font-size:1.15rem}
+.term-ans{font-weight:700;font-size:1.15rem;margin:0 0 4px}
 .blurb{margin:-4px 0 12px;font-size:.9rem;color:var(--muted);border-left:3px solid var(--accent);padding-left:10px}
 .blurb:empty{display:none}
 </style>
@@ -50,6 +56,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <body>
 <main>
 <h1>IELTS Vocab Flashcards</h1>
+<div class="modebar" id="modebar" role="group" aria-label="Card direction"></div>
+<p class="modehint" id="modehint"></p>
 <p class="sub">Cards are grouped by theme and usage, so related words reinforce each other. Say the meaning and make your own sentence first, then reveal. Tap 🔊 to hear it. Mark cards to review again. Your marks are remembered in this browser. To move them to another device, use <b>Save progress</b> and then <b>Load progress</b> there.</p>
 <div class="tools" id="sync"></div>
 <div class="tabs" role="tablist" id="tabs"></div>
@@ -67,10 +75,11 @@ function store(k,v){try{if(v===undefined)return localStorage.getItem(P+k);localS
 let marks={}; try{marks=JSON.parse(store("marks")||"{}");}catch(e){marks={};}
 let current=store("tab")||DECKS[0].id;
 if(!DECKS.some(d=>d.id===current))current=DECKS[0].id;
+let mode=store("mode")==="zh"?"zh":"en";
 let onlyAgain=false, query="", order=[], msg="";
 let dirty=false, lastFile=store("lastfile")||"";
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
-function key(d,c){return c[0];} /* keyed by term so marks survive regrouping */
+function key(d,c){return (mode==="zh"?"zh|":"")+c[0];} /* keyed by term so marks survive regrouping */
 function saveMarks(){store("marks",JSON.stringify(marks));dirty=true;renderSync();}
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}
 function saveFile(){
@@ -120,8 +129,17 @@ function deckItems(){
     DECKS.forEach(d=>d.cards.forEach((c,k)=>{if((c[0]+" "+c[3]+" "+c[2]).toLowerCase().includes(q))out.push({d,c,k});}));return out;}
   const d=DECKS.find(x=>x.id===current);return d.cards.map((c,k)=>({d,c,k}));
 }
+function renderMode(){
+  const bar=document.getElementById("modebar");bar.innerHTML="";
+  [["en","English → 中文"],["zh","中文 → English"]].forEach(([m,label])=>{
+    const b=el("button",null,label);b.setAttribute("aria-pressed",mode===m);
+    b.onclick=()=>{if(mode===m)return;mode=m;store("mode",mode);onlyAgain=false;render();window.scrollTo(0,0);};bar.append(b);});
+  document.getElementById("modehint").textContent=mode==="zh"
+    ?"Recall mode: read the Chinese, say the English word or phrase aloud, then tap Show answer. Review-again marks are kept separately for this mode."
+    :"Read the English, explain the meaning in your own words, then tap Show answer.";
+}
 function render(){
-  renderTabs();
+  renderMode();renderTabs();
   const items=deckItems();
   const tools=document.getElementById("tools");
   if(!tools.firstChild){
@@ -145,19 +163,21 @@ function drawCards(items){
   shown.forEach(({d,c,k})=>{
     const [term,pos,def,zh,ex,note]=c;const kk=key(d.id,c);
     const card=el("div","card"+(marks[kk]?" again":""));
-    const qp=el("p","q");qp.append(el("span","num",(k+1)+"."),document.createTextNode(term));
+    const qp=el("p","q"+(mode==="zh"?" zhq":""));qp.append(el("span","num",(k+1)+"."),document.createTextNode(mode==="zh"?zh:term));
     if(query)qp.append(el("span","from",d.title));
     if(marks[kk])qp.append(el("span","mark","review again"));card.append(qp);
     const ans=el("div","a");ans.hidden=true;
+    if(mode==="zh")ans.append(el("p","term-ans",term));
     ans.append(el("span","pos",pos));
     const pd=el("p");pd.append(el("span","lab","Meaning"),document.createTextNode(def));ans.append(pd);
-    const pz=el("p","zh");pz.append(el("span","lab","中文"),document.createTextNode(zh));ans.append(pz);
+    if(mode!=="zh"){const pz=el("p","zh");pz.append(el("span","lab","中文"),document.createTextNode(zh));ans.append(pz);}
     const pe=el("p","ex");pe.append(el("span","lab","IELTS"),document.createTextNode(ex));ans.append(pe);
     if(note)ans.append(el("p","note",note));
     const row=el("div","row");
-    const rev=el("button",null,"Show answer");rev.onclick=()=>{ans.hidden=!ans.hidden;rev.textContent=ans.hidden?"Show answer":"Hide answer";};
+    const rev=el("button",null,"Show answer");rev.onclick=()=>{ans.hidden=!ans.hidden;rev.textContent=ans.hidden?"Show answer":"Hide answer";if(mode==="zh"){sp.hidden=spx.hidden=ans.hidden;}};
     const sp=el("button",null,"🔊");sp.setAttribute("aria-label","Say "+term);sp.onclick=()=>speak(term);
     const spx=el("button",null,"🔊 Example");spx.onclick=()=>speak(ex);
+    if(mode==="zh"){sp.hidden=spx.hidden=true;sp.setAttribute("aria-label","Say the word");}
     const ag=el("button",null,marks[kk]?"Got it now":"Review again");ag.onclick=()=>{if(marks[kk])delete marks[kk];else marks[kk]=1;saveMarks();
       card.classList.toggle("again",!!marks[kk]);ag.textContent=marks[kk]?"Got it now":"Review again";
       const m=qp.querySelector(".mark");if(marks[kk]&&!m)qp.append(el("span","mark","review again"));if(!marks[kk]&&m)m.remove();
